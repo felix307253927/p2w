@@ -57,6 +57,7 @@ if (!args.length) {
     const [name, value]        = a.split('=')
     arg[name.replace(rex, '')] = value
   })
+  console.log("参数: 目录", arg.d, "采样率:", arg.r || 16000, "比特率:", arg.b || 16, "声道:", arg.c || 1)
   if (!arg.d) {
     console.log("必须传入参数 -d 文件目录地址")
   } else if (!fs.existsSync(arg.d)) {
