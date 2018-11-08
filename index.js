@@ -5,41 +5,117 @@
  */
 'use strict';
 
-const fs       = require("fs")
-const path     = require("path")
-const WStream  = require("./wav-stream")
-const dataPath = "/home/felix/Downloads/csvResult/data/data"
+const fs      = require("fs")
+const path    = require("path")
+const WStream = require("./wav-stream")
+// const dataPath = "/home/felix/Downloads/csvResult/data/data"
 
 let count = 0
 
-const suf = /\.(wav|pcm)$/
-const wav = /\.wav$/
+const suf  = /\.(wav|pcm)$/
+const wav  = /\.wav$/
+const prex = /\\|\//g
 
-function readFile(dPath, rate = 16000, bit = 16, channel = 1) {
+async function readFile(dPath, rate = 16000, bit = 16, channel = 1) {
+  if (+rate >= 8000 || +bit >= 2 || +channel >= 1) {
+    const files = fs.readdirSync(dPath)
+    for (let i = 0, len = files.length; i < len; i++) {
+      let f      = files[i]
+      const p    = path.join(dPath, f)
+      const stat = fs.statSync(p)
+      if (stat.isDirectory()) {
+        await readFile(p, rate, bit, channel)
+      } else if (stat.isFile()) {
+        const name = f.toLowerCase()
+        if (suf.test(name)) {
+          const fPath = path.join(dPath, name.replace(wav, '_org.pcm'))
+          fs.renameSync(p, fPath)
+          await new Promise((resolve, reject) => {
+            fs.createReadStream(fPath).pipe(new WStream({
+              bufSize     : stat.size,
+              sampleRate  : rate,
+              sampleBits  : bit,
+              channelCount: channel
+            })).pipe(fs.createWriteStream(p))
+              .on("close", () => {
+                fs.unlinkSync(fPath)
+                resolve()
+              })
+              .on('error', (err) => {
+                console.log(err)
+                reject()
+              })
+          })
+          ++count
+        }
+      }
+    }
+    console.log("已转码音频:", count)
+  } else {
+    console.log("参数 -r -b -c 错误")
+  }
+}
+
+/**
+ * 提取音频
+ * @param rootPath
+ */
+async function extractAudio(rootPath) {
+  const audioPath = path.join(rootPath, 'extract_audio')
+  if (fs.existsSync(audioPath)) {
+    rmdir(audioPath)
+  }
+  fs.mkdirSync(audioPath)
+  await extract(rootPath, rootPath, audioPath)
+  console.log("已提取音频:", count)
+}
+
+async function extract(dPath, rootPath, audioPath) {
   const files = fs.readdirSync(dPath)
-  files.forEach(f => {
+  for (let i = 0, len = files.length; i < len; i++) {
+    let f = files[i]
+    if (f === "extract_audio") {
+      continue;
+    }
     const p    = path.join(dPath, f)
     const stat = fs.statSync(p)
     if (stat.isDirectory()) {
-      readFile(p)
+      await extract(p, rootPath, audioPath)
     } else if (stat.isFile()) {
       const name = f.toLowerCase()
       if (suf.test(name)) {
-        const fPath = path.join(dPath, name.replace(wav, '_org.pcm'))
-        fs.renameSync(p, fPath)
-        fs.createReadStream(fPath).pipe(new WStream({
-          bufSize     : stat.size,
-          sampleRate  : rate,
-          sampleBits  : bit,
-          channelCount: channel
-        })).pipe(fs.createWriteStream(p))
-          .on("close", () => {
-            fs.unlinkSync(fPath)
-          })
+        const name = p.replace(rootPath, "").replace(prex, "_")
+        await new Promise((resolve, reject) => {
+          fs.createReadStream(p).pipe(fs.createWriteStream(path.join(audioPath, name)))
+            .on('close', () => {
+              resolve()
+            })
+            .on('error', (err) => {
+              console.error(err)
+              reject()
+            })
+        })
+        console.log('已提取--->', name)
         ++count
       }
     }
-  })
+  }
+}
+
+function rmdir(pth) {
+  if (fs.existsSync(pth)) {
+    const files = fs.readdirSync(pth)
+    for (let i = 0, len = files.length; i < len; i++) {
+      const p    = path.join(pth, files[i])
+      const stat = fs.statSync(p)
+      if (stat.isDirectory()) {
+        rmdir(p)
+      } else {
+        fs.unlinkSync(p)
+      }
+    }
+    fs.rmdirSync(pth)
+  }
 }
 
 const args = process.argv.slice(2)
@@ -50,14 +126,14 @@ if (!args.length) {
   console.log('\t-r 采样率 默认 16000 可不传')
   console.log('\t-b 比特率 默认 16 可不传')
   console.log('\t-c 声道数 默认 1  可不传')
+  console.log('\t-ex 提取音频到 -d 指定的目录/extract_audio下')
 } else {
   const arg = {}
   const rex = /^-/
   args.forEach(a => {
     const [name, value]        = a.split('=')
-    arg[name.replace(rex, '')] = value
+    arg[name.replace(rex, '')] = value || true
   })
-  console.log("参数: 目录", arg.d, "采样率:", arg.r || 16000, "比特率:", arg.b || 16, "声道:", arg.c || 1)
   if (!arg.d) {
     console.log("必须传入参数 -d 文件目录地址")
   } else if (!fs.existsSync(arg.d)) {
@@ -65,8 +141,13 @@ if (!args.length) {
   } else {
     const stat = fs.statSync(arg.d)
     if (stat.isDirectory()) {
-      readFile(arg.d, arg.r, arg.b, arg.c)
-      console.log("已转码:", count)
+      console.log("指定目录:", arg.d)
+      if (!arg.ex) {
+        console.log("参数:", "采样率:", arg.r || 16000, "比特率:", arg.b || 16, "声道:", arg.c || 1)
+        readFile(arg.d, arg.r, arg.b, arg.c)
+      } else {
+        extractAudio(arg.d)
+      }
     } else {
       console.log("传入的目录地址不是一个目录")
     }
