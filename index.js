@@ -24,7 +24,7 @@ async function readFile(dPath, audio, rate = 16000, bit = 16, channel = 1) {
       const p    = path.join(dPath, f)
       const stat = fs.statSync(p)
       if (stat.isDirectory()) {
-        await readFile(p, rate, bit, channel)
+        await readFile(p, audio, rate, bit, channel)
       } else if (stat.isFile()) {
         // const name = f.toLowerCase()
         // if (suf.test(name)) {
