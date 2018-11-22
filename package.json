@@ -10,6 +10,9 @@
     "type": "git",
     "url": "git+https://github.com/felix307253927/p2w.git"
   },
+  "bin": {
+    "p2w": "index.js"
+  },
   "author": "felix",
   "license": "ISC",
   "bugs": {
